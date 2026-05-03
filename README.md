@@ -36,6 +36,7 @@ Kaggle 競賽連結: https://www.kaggle.com/competitions/positive-negative-text-
 | **Day 7：soft pseudo（ensemble teacher，t=0.500）** | **0.78402** | **0.80352** |
 
 > Private LB 揭露後 t=0.500 反超 t=0.520，最終成績 **0.80352**（+4.20% vs baseline）。
+> 在kaggle上已選擇 t=0.520 版本為最終版，故 private LB 顯示 0.80312 。
 
 ### 最終方案：五階段 Soft Pseudo-Label Distillation
 

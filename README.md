@@ -6,6 +6,8 @@
 
 核心挑戰為訓練集（電影評論為主）與測試集（商品 / 遊戲評論為主）之間存在顯著的 **covariate shift（協變量偏移）**，導致 CV 0.871 與 Public LB 0.771 之間有約 10% 的 generalization gap。
 
+Kaggle 競賽連結: https://www.kaggle.com/competitions/positive-negative-text-polarity-classification-26
+
 ---
 
 ## 資料集介紹

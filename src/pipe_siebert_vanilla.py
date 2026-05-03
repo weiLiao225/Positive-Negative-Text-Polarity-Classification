@@ -1,14 +1,12 @@
 """
-Siebert 5-fold + OOF 收集
-==========================
-和 Day 1 的 Sentiment pipeline.py 完全一樣的訓練流程,
-但額外儲存:
-  - oof_siebert.npy : shape (2000, 2), 每筆 train 樣本被「fold 沒看過它的模型」預測的機率
-  - test_probs_siebert.npy : shape (10999, 2), 5-fold 平均 test 機率 (= 原本的 avg_probs.npy)
+siebert/sentiment-roberta-large-english Stratified 5-fold fine-tune。
 
-OOF 是 stacking 的關鍵:
-  - meta-learner 的 train 必須用 OOF 才不會 leak
-  - 5-fold CV 中 fold-i 沒看過 fold-i 的 val, 所以 fold-i 的 val 預測就是這些樣本的 OOF
+Outputs:
+  outputs/oof_siebert_vanilla.npy       : (2000, 2) OOF 機率
+  outputs/testprobs_siebert_vanilla.npy : (10999, 2) 5-fold 平均 test 機率
+
+Usage:
+  python src/pipe_siebert_vanilla.py
 """
 
 import os
@@ -172,11 +170,8 @@ def main():
         fold_scores.append(val_res["eval_f1"])
         print(f"Fold {fold_idx + 1} Val F1 = {val_res['eval_f1']:.4f}")
 
-        # 關鍵: 存 val 預測作為這部分樣本的 OOF
         val_probs = predict_probs(trainer.model, tokenizer, va_texts)
         oof_probs[va_idx] = val_probs
-
-        # 同時累積 test 預測 (5-fold 平均)
         test_probs += predict_probs(trainer.model, tokenizer, test_texts) / N_FOLDS
 
         del trainer, model
@@ -186,12 +181,10 @@ def main():
     cv_std  = float(np.std(fold_scores))
     print("\n" + "="*50)
     print(f"Siebert CV F1 : {cv_mean:.4f} ± {cv_std:.4f}")
-    print(f"Day 1 baseline: 0.8710 ± 0.0052")
 
-    # OOF F1 是另一個健康度檢查 (應該接近 fold mean)
     oof_preds = np.argmax(oof_probs, axis=1)
     oof_f1 = f1_score(labels, oof_preds, average="macro")
-    print(f"OOF F1        : {oof_f1:.4f}  (sanity: 應接近 CV mean)")
+    print(f"OOF F1        : {oof_f1:.4f}")
 
     np.save(OOF_FILE, oof_probs)
     np.save(TEST_FILE, test_probs)

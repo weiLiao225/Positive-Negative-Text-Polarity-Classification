@@ -1,20 +1,13 @@
 """
-Soft-pseudo alpha sweep driver
-==============================
+固定 tau,掃多個 alpha,依序呼叫 pipe_siebert_soft_pseudo.py,
+彙整 OOF F1 與 per-fold best_t spread,自動標記收斂配置(spread < 0.15)。
+已存在的 tag 自動跳過,可中斷後續跑。
 
-固定 tau,掃多個 alpha,自動跑 pipe_siebert_soft-pseudo.py,
-最後彙總 OOF F1 / per-fold best_t spread / 推薦配置。
-
-設計理念:
-  - tau=0 已確認是「最軟」的設定(Day 6 OOF 0.8890 訊號)
-  - 沿 alpha 軸掃 {0.3, 0.5, 1.0, 1.5, 2.0} 找 OOF F1 高峰
-  - 跳過已存在的 tag(可中斷再續跑)
-  - 結尾印推薦表
-
-用法:
-  python tool_sweep-soft-pseudo.py
-  python tool_sweep-soft-pseudo.py --alphas 0.3 0.5 1.0 1.5 2.0 --tau 0.0
-  python tool_sweep-soft-pseudo.py --alphas 0.5 1.0 --dry-run    # 只列要跑的 tag
+Usage:
+  python src/tool_sweep_soft_pseudo.py
+  python src/tool_sweep_soft_pseudo.py --alphas 0.3 0.5 1.0 1.5 2.0 --tau 0.0
+  python src/tool_sweep_soft_pseudo.py --alphas 0.5 1.0 --dry-run
+  python src/tool_sweep_soft_pseudo.py --skip-train   # 只彙總已存在的 oof 檔
 """
 
 import argparse
@@ -28,7 +21,7 @@ from sklearn.metrics import f1_score
 
 TRAIN_CSV    = "data/train_2022.csv"
 OUT_DIR   = "outputs"
-PIPE      = "pipe_siebert_soft-pseudo.py"
+PIPE      = "src/pipe_siebert_soft_pseudo.py"
 PREFIX    = "siebert_soft-pseudo"
 
 

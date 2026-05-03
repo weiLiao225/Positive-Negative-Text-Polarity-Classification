@@ -1,36 +1,16 @@
 """
-Siebert Soft Pseudo-Labeling
-=============================
+siebert soft pseudo-label distillation。
+以 teacher 軟標籤對測試集做知識蒸餾:真實樣本用 hard CE,pseudo 樣本用 soft CE × alpha。
+5-fold split 只切 2000 筆真實資料;pseudo 樣本永遠在 train side,validation 使用純真實標籤。
 
-跟之前 hard pseudo (conf >= 0.95) 失敗的差別:
-  - Hard 版只取 confident test 樣本當 one-hot label,本質是「加強自己原本就確定的決策」
-  - Soft 版保留軟分布 p_test (來自 teacher 的 5-fold 平均 test probs),
-    用 soft-CE / KL 訓練,模型可以表達「這筆其實 0.6/0.4 不確定」
+Outputs:
+  outputs/oof_siebert_soft-pseudo_<tag>.npy          : (2000, 2)
+  outputs/oof_siebert_soft-pseudo_<tag>_per-fold.npy : (5, 2000, 2) val 位置非零
+  outputs/testprobs_siebert_soft-pseudo_<tag>.npy    : (10999, 2)
 
-流程:
-  Stage 1 (teacher):
-    - 直接讀 outputs/testprobs_siebert_vanilla.npy 當 teacher soft labels
-    - (vanilla 是目前 LB 最強的 baseline,先用它當 teacher;之後可換成
-       multi-seed-clean 或 siebert+cardiff+electra 平均做多樣性版本)
-
-  Stage 2 (student soft pseudo fine-tune):
-    - 訓練資料 = 真實 train (2000, hard one-hot) + test (N_test, soft p_test)
-    - 可選 confidence filter τ:只保留 max(p_test) >= τ 的 pseudo 樣本
-    - Loss = CE(real) + α · soft_CE(pseudo)
-    - 5-fold split 只切真實 2000 筆,pseudo 樣本永遠進 train side、
-      val 永遠是純真實標籤
-
-  Stage 3 (threshold tuning):
-    - 走 tool_threshold-tune-foldwise.py 做 per-fold best_t 收斂判定
-
-輸出:
-  - oof_siebert_soft-pseudo_<tag>.npy        : (2000, 2)
-  - oof_siebert_soft-pseudo_<tag>_per-fold.npy : (5, 2000, 2) 只有 val 位置非零
-  - testprobs_siebert_soft-pseudo_<tag>.npy  : (10999, 2)
-
-CLI 範例:
-  python pipe_siebert_soft-pseudo.py --tau 0.8 --alpha 0.5
-  python pipe_siebert_soft-pseudo.py --tau 0.0 --alpha 1.0   # 不做 confidence filter
+Usage:
+  python src/pipe_siebert_soft_pseudo.py --tau 0.0 --alpha 1.0 \\
+    --teacher outputs/testprobs_teacher-siebert-electra.npy --tag teacher-ens
 """
 
 import argparse
@@ -133,7 +113,6 @@ class SoftCETrainer(Trainer):
 
 def compute_metrics(eval_pred):
     logits, labels = eval_pred
-    # eval_dataset 只放真實樣本,labels 已是 hard 整數
     preds = np.argmax(logits, axis=-1)
     return {
         "accuracy": accuracy_score(labels, preds),
@@ -365,7 +344,6 @@ def main():
     print(f"per-fold best_t: {bts}  spread = {max(bts) - min(bts):.3f}")
     print(f"CV F1 (argmax): {cv_mean:.4f} ± {cv_std:.4f}")
     print(f"OOF F1 (argmax): {f1_oof:.4f}")
-    print(f"vanilla baseline OOF F1 = 0.8710")
 
     np.save(oof_file, oof_probs)
     np.save(oof_perfold, oof_perfold_arr)

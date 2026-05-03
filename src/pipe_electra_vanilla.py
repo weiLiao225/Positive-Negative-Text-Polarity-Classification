@@ -1,29 +1,14 @@
 """
-ELECTRA-large 5-fold + OOF
-==========================
-動機: 跟 siebert 不同的 backbone (RoBERTa MLM → ELECTRA RTD) +
-      不同的 pretrain corpus, 拿來當 ensemble 第二成員.
+google/electra-large-discriminator Stratified 5-fold fine-tune。
+fold split 與 pipe_siebert_vanilla.py 相同(seed=42),OOF 可直接對齊做 ensemble。
+val F1 < 0.60 時自動換 seed 重訓,最多 2 次。
 
-關鍵設計:
-   - StratifiedKFold seed=42, n_splits=5, shuffle=True — 跟 siebert_oof_pipeline.py 完全一致
-     這樣 ELECTRA OOF 跟 siebert OOF 是「同一筆 train 樣本對應同一份 fold」, 之後 blend
-     才能對齊. 換 seed 或換 split 就無法做加權搜尋.
-   - lr=1e-5 + warmup 0.1 — ELECTRA 對 lr 敏感, large 模型用小 lr 較穩
-   - 不疊 LS / GCE / filter — 純粹基準, 跟 siebert vanilla 同條件比較
+Outputs:
+  outputs/oof_electra_vanilla.npy       : (2000, 2) OOF 機率
+  outputs/testprobs_electra_vanilla.npy : (10999, 2) 5-fold 平均 test 機率
 
-輸出:
-   outputs/oof_electra.npy           : (2000, 2) 給 blend 用
-   outputs/test_probs_electra.npy    : (10999, 2) 給 LB submit 用
-
-跑完看哪些數字 (依重要性排序):
-   1. CV F1 mean & std        — < 0.83 訊號訓練有問題, > 0.85 算穩
-   2. Fold scores spread      — 5 fold 之間差 > 0.03 代表 ELECTRA 訓練不穩
-   3. OOF F1                  — 應該接近 CV mean, 差太多代表 fold 之間模型品質差很多
-   4. 單模 LB (用 make_submission.py 上傳)
-   5. 跟 siebert OOF 的一致率 — np.mean(oof_electra.argmax(1) == oof_siebert.argmax(1))
-                                85~92% 是 ensemble 黃金區間
-                                > 95% 太相似, ensemble 沒空間
-                                < 80% 訊號太雜, 平均後可能變更糟
+Usage:
+  python src/pipe_electra_vanilla.py
 """
 
 import os
@@ -52,17 +37,16 @@ FINETUNE_DIR = f"{OUTPUT_DIR}/folds_electra_vanilla"
 OOF_FILE     = f"{OUTPUT_DIR}/oof_electra_vanilla.npy"
 TEST_FILE    = f"{OUTPUT_DIR}/testprobs_electra_vanilla.npy"
 
-# ELECTRA-large discriminator: 335M params, 跟 siebert (355M) 容量接近
 BASE_MODEL   = "google/electra-large-discriminator"
 MAX_LENGTH   = 64
-SEED         = 42       # 必須跟 siebert_oof_pipeline.py 同 seed → fold split 對齊
+SEED         = 42       # 必須與 pipe_siebert_vanilla.py 一致,fold split 才能對齊
 N_FOLDS      = 5
-FT_EPOCHS    = 5        # 從 3 → 5: 給 bad-init seed 復活時間
+FT_EPOCHS    = 5
 FT_BATCH_SIZE  = 8
 FT_EVAL_BATCH  = 16
-FT_LR        = 5e-6     # 從 1e-5 → 5e-6: ELECTRA-large 在小資料更需要小 lr (Mosbach 2020)
-FT_WARMUP    = 0.2      # 從 0.1 → 0.2: 更長 warmup, 避免前期 gradient explosion 卡死
-FT_PATIENCE  = 2        # 從 1 → 2: 給 collapse 後復活機會, 不要太早 early stop
+FT_LR        = 5e-6     # ELECTRA-large 在小資料對 lr 敏感,使用較小值
+FT_WARMUP    = 0.2
+FT_PATIENCE  = 2
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
@@ -223,29 +207,22 @@ def main():
     cv_std  = float(np.std(fold_scores))
     print("\n" + "="*50)
     print(f"ELECTRA-large CV F1: {cv_mean:.4f} ± {cv_std:.4f}")
-    print(f"siebert baseline   : 0.8710 ± 0.0052")
     print(f"Fold scores: {[f'{s:.4f}' for s in fold_scores]}")
 
     oof_preds = np.argmax(oof_probs, axis=1)
     oof_f1 = f1_score(labels, oof_preds, average="macro")
-    print(f"OOF F1             : {oof_f1:.4f}  (應接近 CV mean)")
+    print(f"OOF F1             : {oof_f1:.4f}")
 
-    # 跟 siebert OOF 的一致率, 判斷 ensemble diversity
-    siebert_oof_path = f"{OUTPUT_DIR}/oof_siebert.npy"
+    siebert_oof_path = f"{OUTPUT_DIR}/oof_siebert_vanilla.npy"
     if os.path.exists(siebert_oof_path):
         siebert_oof = np.load(siebert_oof_path)
-        siebert_pred = siebert_oof.argmax(1)
-        agree = (siebert_pred == oof_preds).mean()
-        print(f"\nElectra vs Siebert OOF 一致率: {agree*100:.2f}%")
-        print(f"  > 95% : 太相似, ensemble 空間小")
-        print(f"  85~92%: 黃金區間, blend 預期有效")
-        print(f"  < 80% : 訊號太雜, 加進 ensemble 可能變糟")
+        agree = (siebert_oof.argmax(1) == oof_preds).mean()
+        print(f"\nELECTRA vs siebert OOF 一致率: {agree*100:.2f}%  (85~92% 為 ensemble 有效區間)")
 
     np.save(OOF_FILE, oof_probs)
     np.save(TEST_FILE, test_probs)
     print(f"\nOOF probs saved : {OOF_FILE}")
     print(f"Test probs saved: {TEST_FILE}")
-    print(f"\n下一步: python make_submission.py {TEST_FILE}")
 
 
 if __name__ == "__main__":

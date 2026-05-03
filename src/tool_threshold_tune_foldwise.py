@@ -1,26 +1,18 @@
 """
-Foldwise Threshold Tuning
-=========================
+Per-fold threshold 調整與收斂判定。
+對每個 fold 各自在 [0.20, 0.80] 掃 best_t,以 spread 判斷是否為有效訊號:
+  spread < 0.15  → CONVERGED,採 fold-median best_t
+  spread >= 0.15 → DIVERGED,退回 t=0.5
+  --force-t T    → FORCED,直接使用 T,跳過判定
 
-判定 OOF threshold 是否為「真訊號」而非全 OOF 上的偽峰。
+Inputs (由 pipe_siebert_soft_pseudo.py 產出):
+  outputs/oof_<prefix>_<tag>.npy           : (N, 2)
+  outputs/oof_<prefix>_<tag>_per-fold.npy  : (F, N, 2)
+  outputs/testprobs_<prefix>_<tag>.npy     : (N_test, 2)
 
-Day 5 結論:全 OOF 上掃出的 best_t (例如 multi-seed Mosbach 的 0.62) 可能是
-不同 seed/fold 預測抵銷後的 mode 重疊雜訊。判別方式:對每個 fold 各自掃
-best_t,看 5 個 fold 的 best_t 是否收斂(spread < 0.10)。
-
-收斂判定:
-  - spread = max(best_t_per_fold) - min(best_t_per_fold)
-  - spread < 0.10 → 真訊號,採 fold-median best_t
-  - spread >= 0.10 → 噪聲,退回 t=0.5
-
-輸入:
-  - oof_<tag>.npy            (2000, 2)     OOF probs (argmax 後 = OOF prediction)
-  - oof_<tag>_per-fold.npy   (n_folds, 2000, 2)  每 fold 只在 val 位置非零
-  - testprobs_<tag>.npy      (n_test, 2)   test probs(用最終 threshold 套上去)
-
-用法:
-  python tool_threshold-tune-foldwise.py --tag soft-pseudo_tau080_a050
-  python tool_threshold-tune-foldwise.py --tag soft-pseudo_tau080_a050 --write-submission
+Usage:
+  python src/tool_threshold_tune_foldwise.py --tag teacher-ens
+  python src/tool_threshold_tune_foldwise.py --tag teacher-ens --force-t 0.520 --write-submission
 """
 
 import argparse
@@ -34,7 +26,7 @@ TRAIN_CSV    = "data/train_2022.csv"
 TEST_CSV     = "data/test_no_answer_2022.csv"
 OUT_DIR   = "outputs"
 
-CONVERGENCE_SPREAD = 0.15   # spread 小於這個算(弱)收斂; Day 5 multi-seed 偽訊號 spread = 0.21~0.44 屬於發散
+CONVERGENCE_SPREAD = 0.15   # spread 低於此值採 fold-median best_t,否則退回 t=0.5
 
 
 def sweep_one(probs_pos, y_true, lo=0.20, hi=0.80, step=0.005):
@@ -52,7 +44,7 @@ def main():
                     help="模型 tag,對應 oof_siebert_soft-pseudo_<tag>.npy 等檔。"
                          "或直接給 'siebert_vanilla' 等其他模型 tag。")
     ap.add_argument("--prefix", default="siebert_soft-pseudo",
-                    help="檔名前綴,預設 siebert_soft-pseudo (對應 pipe_siebert_soft-pseudo.py 輸出)")
+                    help="檔名前綴,預設 siebert_soft-pseudo (對應 pipe_siebert_soft_pseudo.py 輸出)")
     ap.add_argument("--range", type=float, nargs=2, default=[0.20, 0.80])
     ap.add_argument("--step", type=float, default=0.005)
     ap.add_argument("--write-submission", action="store_true")

@@ -25,13 +25,15 @@
 
 ### 分數演進
 
-| 方案 | Public LB |
-|---|---|
-| Day 1：siebert vanilla 5-fold baseline | 0.77107 |
-| Day 2–5：16 種訓練端修正（hard pseudo、label smoothing、FGM、stacking 等） | 全部失敗，維持 0.771 |
-| Day 6：soft pseudo（siebert teacher） | 0.77601 |
-| Day 7：soft pseudo（ensemble teacher，t=0.500） | 0.78402 |
-| **Day 7：soft pseudo（ensemble teacher，t=0.520）** | **0.78539** |
+| 方案 | Public LB | Private LB |
+|---|---|---|
+| Day 1：siebert vanilla 5-fold baseline | 0.77107 | 0.77829 |
+| Day 2–5：16 種訓練端修正（hard pseudo、label smoothing、FGM、stacking 等） | 全部失敗 | — |
+| Day 6：soft pseudo（siebert teacher） | 0.77601 | 0.78064 |
+| Day 7：soft pseudo（ensemble teacher，t=0.520） | 0.78539 | 0.80312 |
+| **Day 7：soft pseudo（ensemble teacher，t=0.500）** | **0.78402** | **0.80352** |
+
+> Private LB 揭露後 t=0.500 反超 t=0.520，最終成績 **0.80352**（+4.20% vs baseline）。
 
 ### 最終方案：五階段 Soft Pseudo-Label Distillation
 
